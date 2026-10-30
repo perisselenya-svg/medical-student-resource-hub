@@ -1,0 +1,24 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Prisma client is generated on install (see "postinstall")
+src/generated/
+
+# pdf.js runtime assets are copied from node_modules on install (scripts/copy-pdf-assets.mjs)
+public/pdfjs/
+
+# Secrets and local data — never commit these
+.env
+.env.*
+!.env.example
+uploads/
+backups/
+.git
+docs/
+README.md
+docker/
+Dockerfile
+docker-compose*.yml

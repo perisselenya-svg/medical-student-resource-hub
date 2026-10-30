@@ -1,0 +1,93 @@
+# Medical Student Resource Hub — production stack:
+#   PostgreSQL + Next.js app + Nginx (TLS certificates from Certbot on the host).
+#   docker compose up -d --build                      # start (migrations run automatically)
+#   docker compose run --rm migrate npm run db:seed   # first admin + subject categories
+# All configuration comes from .env (see .env.example).
+name: resource-hub
+
+x-app-env: &app-env
+  NODE_ENV: production
+  # Built from the POSTGRES_* values so credentials live in one place.
+  DATABASE_URL: postgresql://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-resource_hub}?schema=public
+  AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
+  APP_URL: ${APP_URL:?set APP_URL}
+  STORAGE_DRIVER: local
+  UPLOAD_DIR: /data/uploads
+  MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-25}
+  UPLOAD_RATE_LIMIT_MAX: ${UPLOAD_RATE_LIMIT_MAX:-30}
+  UPLOAD_RATE_LIMIT_WINDOW_MINUTES: ${UPLOAD_RATE_LIMIT_WINDOW_MINUTES:-10}
+  LOGIN_RATE_LIMIT_MAX: ${LOGIN_RATE_LIMIT_MAX:-5}
+  LOGIN_RATE_LIMIT_WINDOW_MINUTES: ${LOGIN_RATE_LIMIT_WINDOW_MINUTES:-15}
+  SESSION_MAX_AGE_HOURS: ${SESSION_MAX_AGE_HOURS:-8}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-resource_hub}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No published ports: the database is only reachable on the internal network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-off: applies pending migrations, then exits. Also used for seed/admin scripts.
+  migrate:
+    build: { context: ., target: tools }
+    image: resource-hub-tools
+    restart: "no"
+    environment:
+      <<: *app-env
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrator}
+      SEED_DEMO_CONTENT: ${SEED_DEMO_CONTENT:-false}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    build: { context: ., target: runner }
+    image: resource-hub-app
+    restart: unless-stopped
+    environment: *app-env
+    volumes:
+      - uploads:/data/uploads
+    # Not published to the host: only Nginx can reach it.
+    expose:
+      - "3000"
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-30m}
+      # Templates are copied here by 15-select-site.sh (HTTP-only until a certificate exists).
+      NGINX_ENVSUBST_TEMPLATE_DIR: /tmp/nginx-templates
+    volumes:
+      - ./docker/nginx/templates:/etc/nginx/site-templates:ro
+      - ./docker/nginx/15-select-site.sh:/docker-entrypoint.d/15-select-site.sh:ro
+      # Certbot runs on the HOST (see docs/DEPLOYMENT.md): webroot challenges are
+      # written here and certificates are read (read-only) from /etc/letsencrypt.
+      - /var/www/certbot:/var/www/certbot:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      app: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  uploads:
