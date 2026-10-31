@@ -4,6 +4,12 @@ A database-backed medical education platform. **Admins** upload, organise, publi
 
 > **For educational purposes only. Not a substitute for clinical judgment.** The platform gives no medical advice and offers no clinical decision support.
 
+| Student home | Resource page (embedded PDF) | Admin dashboard |
+| --- | --- | --- |
+| ![Student home](docs/screenshots/student-home.png) | ![Resource page](docs/screenshots/student-resource-pdf.png) | ![Admin dashboard](docs/screenshots/admin-dashboard.png) |
+
+More screenshots: [docs/screenshots](docs/screenshots).
+
 ## Contents
 
 1. [Features](#features)
