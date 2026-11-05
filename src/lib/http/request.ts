@@ -24,13 +24,27 @@ export function clientIp(headers: Headers): string {
  * The session cookie is SameSite=Lax, so browsers already refuse to attach it
  * to cross-site POST/PATCH/PUT/DELETE requests. As defence in depth we also
  * require the Origin header (sent by all modern browsers on these methods) to
- * match APP_URL. Requests without Origin (curl, server-to-server) are allowed
- * because they cannot carry a victim's browser cookies.
+ * match either APP_URL or the host the request was actually sent to (the
+ * Host / X-Forwarded-Host set by our proxy). A forged cross-site request always
+ * carries the attacker's origin, which matches neither. Accepting the serving
+ * host lets previews and alternate hostnames work without weakening this.
+ * Requests without Origin (curl, server-to-server) are allowed because they
+ * cannot carry a victim's browser cookies.
  */
 export function assertSameOrigin(request: Request): void {
   const origin = request.headers.get("origin");
   if (!origin) return;
-  if (origin !== env().appOrigin) {
+  if (origin === env().appOrigin) return;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new ApiError("FORBIDDEN", "Cross-origin request rejected");
+  }
+  const servingHosts = [request.headers.get("x-forwarded-host"), request.headers.get("host")]
+    .flatMap((h) => (h ? h.split(",").map((s) => s.trim()) : []))
+    .filter(Boolean);
+  if (!servingHosts.includes(originHost)) {
     throw new ApiError("FORBIDDEN", "Cross-origin request rejected");
   }
 }
