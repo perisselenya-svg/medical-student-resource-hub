@@ -1,4 +1,4 @@
-# Medical Student Resource Hub
+# Medical Student Resource Hub- DR.Selenya Peris T.---Under EagleTech
 
 A database-backed medical education platform. **Admins** upload, organise, publish and manage study materials (PDF notes, images, diagrams, Markdown notes) and build quizzes. **Students** search, filter, preview, read and download published materials, and take quizzes, without registering or logging in.
 
